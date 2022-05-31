@@ -155,7 +155,7 @@
     <ClInclude Include="utils.hpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="Assembler.cpp" />
     <ClCompile Include="Parser.cpp" />
     <ClCompile Include="SymbolTable.cpp" />
     <ClCompile Include="utils.cpp" />
