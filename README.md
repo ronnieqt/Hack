@@ -1,5 +1,5 @@
 # Hack
-Software for the Hack Computer (Implemented in C++)
+A Software Suite for the Hack Computer (Implemented in C++)
 
 - Assembler
 - VM
