@@ -18,11 +18,11 @@
 
 #include <boost/program_options.hpp>
 
-#include "Parser.h"
-#include "Code.h"
-#include "SymbolTable.h"
-#include "types.h"
-#include "utils.h"
+#include "Parser.hpp"
+#include "Code.hpp"
+#include "SymbolTable.hpp"
+#include "types.hpp"
+#include "utils.hpp"
 
 namespace fs = std::filesystem;
 namespace po = boost::program_options;

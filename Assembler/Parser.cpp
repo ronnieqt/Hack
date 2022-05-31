@@ -1,6 +1,6 @@
 // Implementation details of the Parser
 
-#include "Parser.h"
+#include "Parser.hpp"
 
 #include <boost/regex.hpp>
 #include <boost/algorithm/string.hpp>

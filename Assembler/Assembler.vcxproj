@@ -148,11 +148,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="Code.h" />
-    <ClInclude Include="Parser.h" />
-    <ClInclude Include="SymbolTable.h" />
-    <ClInclude Include="types.h" />
-    <ClInclude Include="utils.h" />
+    <ClInclude Include="Code.hpp" />
+    <ClInclude Include="Parser.hpp" />
+    <ClInclude Include="SymbolTable.hpp" />
+    <ClInclude Include="types.hpp" />
+    <ClInclude Include="utils.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />

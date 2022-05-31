@@ -1,7 +1,7 @@
 // implementation details of utility functions
 
-#include "utils.h"
-#include "Parser.h"
+#include "utils.hpp"
+#include "Parser.hpp"
 
 // ============================================================ //
 

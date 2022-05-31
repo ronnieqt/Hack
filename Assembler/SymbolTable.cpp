@@ -1,8 +1,8 @@
 // Implementation Details of the Symbol Table
 
-#include "SymbolTable.h"
-#include "Parser.h"
-#include "types.h"
+#include "SymbolTable.hpp"
+#include "Parser.hpp"
+#include "types.hpp"
 
 #include <fstream>
 
