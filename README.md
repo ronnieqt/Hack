@@ -1,5 +1,5 @@
 # Hack
 A Software Suite for the Hack Computer (Implemented in C++)
 
-- Assembler
-- VM
+- VMTranslator (.vm to .asm)
+- Assembler (.asm to .hack)
