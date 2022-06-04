@@ -1,8 +1,8 @@
 /*
-* Purpose: The Hack Assembler
+* Purpose: The Hack Assembler (assembly code to binary code)
 * Author : Xi (Ronnie) Chen
 * Date   : 05/28/2022
-* Usage  : prompt> HackAsm Prog.asm
+* Usage  : prompt> Assembler Prog.asm
 */
 
 #include <iostream>
