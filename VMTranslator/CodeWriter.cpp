@@ -4,57 +4,7 @@
 #include "asm_ops.hpp"
 
 #include <sstream>
-
-// ============================================================ //
-
-std::string assign(const std::string& name)
-{
-	std::stringstream code;
-	code << "@" << name << std::endl << "M=D\n";
-	return code.str();
-}
-
-std::string assign(const std::string& name, int val)
-{
-	std::stringstream code;
-	code << "@" << val << std::endl << "D=A\n"
-		<< assign(name);
-	return code.str();
-}
-
-std::string assign_static(const std::string& f_name, int val)
-{
-	static int count = 0;
-	auto code = assign(std::format("{}.{}", f_name, count), val);
-	count++;
-	return code;
-}
-
-// ============================================================ //
-
-std::string stack_push(const std::string& seg, int i)
-{
-	std::stringstream code;
-	// D = *(segment_pointer + i)
-	code << ASM::DCHG::ptr_pi(seg, i)
-		<< ASM::DNCHG::star()
-		<< "D=M\n"
-		<< ASM::DNCHG::stack_push();
-	return code.str();
-}
-
-// ============================================================ //
-
-std::string stack_pop(const std::string& seg, int i)
-{
-	std::stringstream code;
-	// addr = segmentPointer + i, SP--, *addr = *SP
-	code << ASM::DCHG::ptr_pi(seg, i) << assign("addr")
-		<< ASM::DNCHG::ptr_mm("SP")
-		<< ASM::DNCHG::star_ptr("SP") << "D=M\n"
-		<< ASM::DNCHG::star_ptr("addr") << "M=D\n";
-	return code.str();
-}
+#include <cassert>
 
 // ============================================================ //
 
@@ -132,26 +82,31 @@ void CodeWriter::write_push_pop(CmdType cmd_t, const std::string& seg, int idx)
 	{
 	case CmdType::C_PUSH:
 		code << "// push " << seg << " " << idx << std::endl;
-		if (seg == "constant") {
-			code << ASM::DCHG::stack_push(idx);
-		}
-		/*
-		else if (seg == "local") {
-			code << stack_push("LCL", idx);
+		if (seg == "local") {
+			code << ASM::DCHG::stack_push("LCL", idx);
 		}
 		else if (seg == "argument") {
-			code << stack_push("ARG", idx);
+			code << ASM::DCHG::stack_push("ARG", idx);
 		}
 		else if (seg == "this") {
-			code << stack_push("THIS", idx);
+			code << ASM::DCHG::stack_push("THIS", idx);
 		}
 		else if (seg == "that") {
-			code << stack_push("THAT", idx);
+			code << ASM::DCHG::stack_push("THAT", idx);
 		}
 		else if (seg == "static") {
-			code << assign_static(m_f_name, idx);
+			code << ASM::DCHG::stack_push_static(m_f_name, idx);
 		}
-		*/
+		else if (seg == "constant") {
+			code << ASM::DCHG::stack_push(idx);
+		}
+		else if (seg == "temp") {
+			code << ASM::DCHG::assign("R13", 5)
+				<< ASM::DCHG::stack_push("R13", idx);
+		}
+		else if (seg == "pointer") {
+			code << ASM::DCHG::stack_push_pointer(idx);
+		}
 		else {
 			auto error_msg = std::format("Invalid segment type: [{}].", seg);
 			throw std::invalid_argument(error_msg);
@@ -159,24 +114,32 @@ void CodeWriter::write_push_pop(CmdType cmd_t, const std::string& seg, int idx)
 		break;
 	case CmdType::C_POP:
 		code << "// pop" << seg << " " << idx << std::endl;
-		/*
 		if (seg == "local") {
-			code << stack_pop("LCL", idx);
+			code << ASM::DCHG::stack_pop("LCL", idx);
 		}
 		else if (seg == "argument") {
-			code << stack_pop("ARG", idx);
+			code << ASM::DCHG::stack_pop("ARG", idx);
 		}
 		else if (seg == "this") {
-			code << stack_pop("THIS", idx);
+			code << ASM::DCHG::stack_pop("THIS", idx);
 		}
 		else if (seg == "that") {
-			code << stack_pop("THAT", idx);
+			code << ASM::DCHG::stack_pop("THAT", idx);
+		}
+		else if (seg == "static") {
+			code << ASM::DCHG::stack_pop_static(m_f_name, idx);
+		}
+		else if (seg == "temp") {
+			code << ASM::DCHG::assign("R13", 5)
+				<< ASM::DCHG::stack_pop("R13", idx);
+		}
+		else if (seg == "pointer") {
+			code << ASM::DCHG::stack_pop_pointer(idx);
 		}
 		else {
 			auto error_msg = std::format("Invalid segment type: [{}].", seg);
 			throw std::invalid_argument(error_msg);
 		}
-		*/
 		break;
 	default:
 		throw std::invalid_argument("Invalid command type.");
