@@ -8,6 +8,7 @@
 
 # coursera file(s)
 lang.txt
+*.zip
 
 # mac file(s)
 .DS_Store
