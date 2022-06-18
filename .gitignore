@@ -9,6 +9,9 @@
 # coursera file(s)
 lang.txt
 
+# mac file(s)
+.DS_Store
+
 # Prerequisites
 *.d
 
