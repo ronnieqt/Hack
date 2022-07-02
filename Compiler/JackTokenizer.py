@@ -7,15 +7,59 @@ Also, it parses and provides the type of each token.
 # %% import libs
 
 import re
-from tokenize import Token
+
+from typing import List
+from itertools import chain
 
 from TokenTypes import TokenType
 
-# %% file pre-processing
+# %% utils
 
-def preprocess(jack_file_path):
+def is_string_constant(block: str):
+    return re.match(r"^\"[^\"\n]+\"$", block)
+
+
+def is_identifier(block: str):
+    return re.match(r"^[a-zA-Z_]\w*$", block)
+
+# %% jack file processing
+
+def process_line(line: str) -> str:
+    line = re.sub("//.*$", "", line)
+    line = line.strip()
+    return re.findall(r'\S*".*"\S*|\S+', line)
+
+
+def split_into_tokens(block: str) -> List[str]:
+    patt = '([' + re.escape("".join(JackTokenizer.symbols)) + '])'
+    return re.split(patt, block)
+
+
+def process_code_block(block: str) -> List[str]:
+    # when the given block is a stand-alone token
+    if block in JackTokenizer.keywords \
+        or block in JackTokenizer.symbols \
+        or block.isdigit() \
+        or is_string_constant(block) \
+        or is_identifier(block):
+        return [block]
+    else:  # the given block is a collection of tokens
+        return split_into_tokens(block)
+
+def get_tokens(jack_file_path):
+    # read the code as str
     with open(jack_file_path, 'r') as f:
-        print(f.read())
+        codes = f.read()
+    # erase block comments
+    # NOTE: *? will match in a non-greedy fasion
+    codes = re.sub(r"/\*.*?\*/", " ", codes, flags=re.DOTALL)
+    # split codes into lines
+    lines = [process_line(line) for line in codes.split("\n")]
+    # flatten processed lines into code blocks
+    code_blocks = [*chain(*lines)]
+    # split code blocks into tokens
+    tokens = [process_code_block(block) for block in code_blocks]
+    return [tkn for tkn in chain(*tokens) if tkn]
 
 # %% class definition
 
@@ -33,18 +77,20 @@ class JackTokenizer:
     }
 
     def __init__(self, jack_file_path):
-        self.f_jack = open(jack_file_path, 'r')
+        self.tokens = get_tokens(jack_file_path)
+        self.n_tokens = len(self.tokens)
+        self.i_curr_token = -1
         self.curr_token = None  # initially, there is no current token
-        pass
 
     def has_more_tokens(self):
         '''Are there more tokens in the input'''
-        pass
+        return self.i_curr_token < self.n_tokens - 1
 
     def advance(self):
         '''Gets the next token and makes it the current token'''
         assert self.has_more_tokens()
-        pass
+        self.i_curr_token += 1
+        self.curr_token = self.tokens[self.i_curr_token]
 
     def token_type(self):
         '''Returns the type of the current token'''
@@ -63,10 +109,10 @@ class JackTokenizer:
                 return TokenType.INT_CONST
             else:
                 raise OverflowError(f"[{self.curr_token}] is out-of-range!")
-        elif re.match(r"^\"[^\"\n]+\"$", self.curr_token):
+        elif is_string_constant(self.curr_token):
             # string: a sequence of chars not including " or \n
             return TokenType.STRING_CONST
-        elif re.match(r"^[^\d][\w\d_]*$", self.curr_token):
+        elif is_identifier(self.curr_token):
             # indentifier: a sequence of letters, digits, and _
             # (not starting with a digit)
             return TokenType.IDENTIFIER
@@ -101,4 +147,5 @@ class JackTokenizer:
 # %% testing
 
 if __name__ == "__main__":
-    preprocess("tests/ExpressionLessSquare/Main.jack")
+    print(get_tokens("./Compiler/tests/Square/SquareGame.jack"))
+    print()
