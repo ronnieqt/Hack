@@ -8,16 +8,13 @@ from pathlib import Path
 
 import argparse
 
+from CompilationEngine import CompilationEngine
+
 # %% command-line arguments
 
 parser = argparse.ArgumentParser()
 parser.add_argument("src", help="Jack source file(s)")
 options = parser.parse_args()
-
-# %% process each jack file
-
-def process_jack_file(jack_file: Path):
-    pass
 
 # %% main function
 
@@ -29,7 +26,9 @@ def _main():
 
     # process each jack file
     for jack_file in jack_files:
-        process_jack_file(jack_file)
+        engine = CompilationEngine(jack_file)
+        engine.compile_class()
+        engine.write_to_xml()
 
 # %% call the main function
 
