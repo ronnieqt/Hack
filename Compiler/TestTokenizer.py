@@ -39,7 +39,7 @@ def test_tokenizer(jack_file_path: Path):
         else:
             raise Exception(f"Unrecognized Token Type: [{tknzr.token_type()}]")
     
-    pretty_print(tokens)
+    pretty_print(tokens, indent="")
 
     xml_file_path = jack_file_path.with_name(f"{jack_file_path.stem}T.xml")
     ET.ElementTree(tokens).write(xml_file_path)
