@@ -355,7 +355,7 @@ class CompilationEngine:
             self.compile_expression(); n_expr += 1
             if self.tknzr.token_type() == TokenType.SYMBOL and \
                 self.tknzr.symbol() == ',':
-                self.__add_symbol({','})
+                self.__add_symbol()
         if not n_expr:
             self.parent.text = " "
         return n_expr
