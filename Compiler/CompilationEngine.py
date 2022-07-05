@@ -9,7 +9,7 @@ from pathlib import Path
 
 import xml.etree.ElementTree as ET
 
-from utils import pretty_print
+from utils import pretty_print, update_parent
 from TokenTypes import TokenType
 from JackTokenizer import JackTokenizer
 
@@ -50,13 +50,10 @@ class CompilationEngine:
         # expecting '}'
         self.__add_symbol({'}'}, advance=False)
 
+    @update_parent("classVarDec")
     def compile_class_var_dec(self):
         '''Compiles a static variable declaration, or a field declaration.'''
         # grammar: ('static'|'field') type varName (',' varName)* ';'
-        # backup self.parent
-        parent = self.parent
-        # update self.parent
-        self.parent = ET.SubElement(self.parent, "classVarDec")
         # expecting 'static' or 'field'
         self.__add_keyword({"static", "field"})
         # expecting a type
@@ -71,17 +68,12 @@ class CompilationEngine:
             self.__add_identifier()
         # expecting ';'
         self.__add_symbol({';'})
-        # reset self.parent
-        self.parent = parent
 
+    @update_parent("subroutineDec")
     def compile_subroutine(self):
         '''Compiles a complete method, function, or ctor.'''
         # grammar: ('constructor'|'function'|'method') ('void'|type) subroutineName
         #          '(' parameterList ')' subroutineBody
-        # backup self.parent
-        parent = self.parent
-        # update self.parent
-        self.parent = ET.SubElement(self.parent, "subroutineDec")
         # expecting keyword 'constructor' or 'function' or 'method'
         self.__add_keyword({"constructor", "function", "method"})
         # expecting 'void' or type
@@ -99,21 +91,15 @@ class CompilationEngine:
         self.__add_symbol({')'})
         # expecting subrountineBody
         self.compile_subroutine_body()
-        # reset self.parent
-        self.parent = parent
 
+    @update_parent("parameterList")
     def compile_parameter_list(self):
         '''Compiles a (possibly empty) parameter list.
         Does not handle the enclosing parentheses tokens ( and ).'''
         # grammar: ((type varName) (',' type varName)*)?
-        # backup self.parent
-        parent = self.parent
-        # update self.parent
-        self.parent = ET.SubElement(self.parent, "parameterList")
         # empty parameter list
         if self.tknzr.token_type() == TokenType.SYMBOL:
             self.parent.text = " "
-            self.parent = parent
             return
         # non-empty parameter list
         while True:
@@ -126,16 +112,11 @@ class CompilationEngine:
                 self.__add_symbol({','})
             else:
                 break
-        # reset self.parent
-        self.parent = parent
 
+    @update_parent("subroutineBody")
     def compile_subroutine_body(self):
         '''Compiles a subroutine's body.'''
         # grammar: '{' varDec* statements '}'
-        # backup self.parent
-        parent = self.parent
-        # update self.parent
-        self.parent = ET.SubElement(self.parent, "subroutineBody")
         # expecting '{'
         self.__add_symbol({'{'})
         # expecting varDec*
@@ -144,22 +125,14 @@ class CompilationEngine:
                 break
             self.compile_var_dec()
         # expecting statements
-        while self.tknzr.token_type() != TokenType.SYMBOL:
-            if self.tknzr.keyword() not in {"let", "if", "while", "do", "return"}:
-                break
-            self.compile_statements()
+        self.compile_statements()
         # expecting '}'
         self.__add_symbol({'}'})
-        # reset self.parent
-        self.parent = parent
 
+    @update_parent("varDec")
     def compile_var_dec(self):
         '''Compiles a var declaration.'''
         # grammar: 'var' type varName (',' varName)* ';'
-        # backup self.parent
-        parent = self.parent
-        # update self.parent
-        self.parent = ET.SubElement(self.parent, "varDec")
         # expecting 'var'
         self.__add_keyword({"var"})
         # expecting type
@@ -174,20 +147,15 @@ class CompilationEngine:
             self.__add_identifier()
         # expecting ';'
         self.__add_symbol({';'})
-        # reset self.parent
-        self.parent = parent
 
+    @update_parent("statements")
     def compile_statements(self):
         '''Compiles a sequence of statements.
         Does not handle the enclosing curly bracket tokens { and }.'''
         # grammar: statement*
         # statement: let, if, while, do, return
-        # backup self.parent
-        parent = self.parent
-        # update self.parent
-        self.parent = ET.SubElement(self.parent, "statements")
-        # expecting a statement
         while self.tknzr.token_type() != TokenType.SYMBOL:
+            # expecting a statement
             keyword = self.tknzr.keyword()
             if keyword == "let":
                 self.compile_let()
@@ -201,52 +169,106 @@ class CompilationEngine:
                 self.compile_return()
             else:
                 raise Exception(f"Unrecognized keyword: [{keyword}]")
-        # reset self.parent
-        self.parent = parent
 
+    @update_parent("letStatement")
     def compile_let(self):
         '''Compiles a let statement.'''
         # grammar: 'let' varName ('['expression']')? '=' expression ';'
-        # backup self.parent
-        parent = self.parent
-        # update self.parent
-        self.parent = ET.SubElement(self.parent, "letStatement")
         # expecting 'let'
         self.__add_keyword({"let"})
         # expecting varName
         self.__add_identifier()
         # expecting ('['expression']')?
-        # TODO
+        if self.tknzr.symbol() == '[':
+            self.__add_symbol({'['})
+            self.compile_expression()
+            self.__add_symbol({']'})
         # expecting '='
         self.__add_symbol({'='})
-        # expecting expression
-        # TODO
-        self.__add_identifier()  # TODO: remove this line
+        # expecting an expression
+        self.compile_expression()
         # expecting ';'
         self.__add_symbol({';'})
-        # reset self.parent
-        self.parent = parent
 
+    @update_parent("ifStatement")
     def compile_if(self):
         '''Compiles an if statement, possibly with a trailing else clause.'''
-        pass
+        # grammar: 'if' '(' expression ')'
+        # expecting 'if'
+        self.__add_keyword({'if'})
+        # expecting '('
+        self.__add_symbol({'('})
+        # expecting an expression
+        self.compile_expression()
+        # expecting ')'
+        self.__add_symbol({')'})
 
+    @update_parent("whileStatement")
     def compile_while(self):
         '''Compiles a while statement.'''
-        pass
+        # grammar: 'while' '(' expression ')' '{' statements '}'
+        # expecting 'while'
+        self.__add_keyword({'while'})
+        # expecting '('
+        self.__add_symbol({'('})
+        # expecting an expression
+        self.compile_expression()
+        # expecting ')'
+        self.__add_symbol({')'})
+        # expecting '{'
+        self.__add_symbol({'{'})
+        # expecting statements
+        self.compile_statements()
+        # expecting '}'
+        self.__add_symbol({'}'})
 
+    @update_parent("doStatement")
     def compile_do(self):
         '''Compiles a do statement.'''
-        pass
+        # grammar: 'do' subroutineCall ';'
+        # expecting 'do'
+        self.__add_keyword({"do"})
+        # expecting subroutineCall
+        # grammar: subroutineName '(' expressionList ')' |
+        #          (className|varName) '.' subroutineName '(' expressionList ')'
+        # expecting an indentifier (subroutineName|className|varName)
+        self.__add_identifier()
+        if self.tknzr.symbol() == '(':
+            # either '(' expressionList ')'
+            self.__add_symbol({'('})
+            self.compile_expression_list()
+            self.__add_symbol({')'})
+        else:
+            # or '.' subroutineName '(' expressionList ')'
+            self.__add_symbol({'.'})
+            self.__add_identifier()
+            self.__add_symbol({'('})
+            self.compile_expression_list()
+            self.__add_symbol({')'})
+        # expecting ';'
+        self.__add_symbol({';'})
 
+    @update_parent("returnStatement")
     def compile_return(self):
         '''Compiles a return statement.'''
-        pass
+        # grammar: 'return' expression? ';'
+        # expecting 'return'
+        self.__add_keyword({"return"})
+        if self.tknzr.token_type() == TokenType.SYMBOL \
+            and self.tknzr.symbol() == ';':
+            # expecting ';'
+            self.__add_symbol({';'})
+        else:
+            # expecting an expression
+            self.compile_expression()
 
+    @update_parent("expression")
     def compile_expression(self):
         '''Compiles an expression.'''
-        pass
-
+        # grammar: term (op term)*
+        self.compile_term()
+    
+    @update_parent("term")
     def compile_term(self):
         '''Compiles a term.
         If the current token is an identifier, the routine must resolve it
@@ -256,6 +278,7 @@ class CompilationEngine:
         Any other token is not part of this term and should not be advanced over.'''
         pass
 
+    @update_parent("expressionList")
     def compile_expression_list(self) -> int:
         '''Compiles a (possibly empty) comma-separated list of expressions.
         Returns the number of expressions in the list.'''
