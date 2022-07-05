@@ -2,6 +2,10 @@
 Utility Functions
 """
 
+# %% import libs
+
+import xml.etree.ElementTree as ET
+
 # %% pretty print an ElementTree
 # ref: https://stackoverflow.com/questions/28813876/how-do-i-get-pythons-elementtree-to-pretty-print-to-an-xml-file
 # NOTE: can be replaced by ET.indent(...) in python 3.9
@@ -23,3 +27,19 @@ def pretty_print(current, parent=None, index=-1, depth=0, indent=" "*2):
                 current.text = ' ' + current.text + ' '
             else:
                 pass
+
+# %% a decorator to update parent node and set it back
+
+def update_parent(parent_name):
+    def _update_parent(func):
+        def _inner(self):
+            # backup self.parent
+            parent = self.parent
+            # update self.parent
+            self.parent = ET.SubElement(self.parent, parent_name)
+            # call func
+            func(self)
+            # reset self.parent
+            self.parent = parent
+        return _inner
+    return _update_parent
