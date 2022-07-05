@@ -154,6 +154,7 @@ class CompilationEngine:
         Does not handle the enclosing curly bracket tokens { and }.'''
         # grammar: statement*
         # statement: let, if, while, do, return
+        any_statement = False
         while self.tknzr.token_type() != TokenType.SYMBOL:
             # expecting a statement
             keyword = self.tknzr.keyword()
@@ -169,6 +170,9 @@ class CompilationEngine:
                 self.compile_return()
             else:
                 raise Exception(f"Unrecognized keyword: [{keyword}]")
+            any_statement = True
+        if not any_statement:
+            self.parent.text = " "
 
     @update_parent("letStatement")
     def compile_let(self):
@@ -193,7 +197,8 @@ class CompilationEngine:
     @update_parent("ifStatement")
     def compile_if(self):
         '''Compiles an if statement, possibly with a trailing else clause.'''
-        # grammar: 'if' '(' expression ')'
+        # grammar: 'if' '(' expression ')' '{' statements '}' 
+        #         ('else' '{' statements '}')?
         # expecting 'if'
         self.__add_keyword({'if'})
         # expecting '('
@@ -202,6 +207,20 @@ class CompilationEngine:
         self.compile_expression()
         # expecting ')'
         self.__add_symbol({')'})
+        # expecting '{'
+        self.__add_symbol({'{'})
+        # expecting statements
+        self.compile_statements()
+        # expecting '}'
+        self.__add_symbol({'}'})
+        # check whether we have an else clause
+        if self.tknzr.token_type() == TokenType.KEYWORD and \
+            self.tknzr.keyword() == "else":
+            # ('else' '{' statements '}')?
+            self.__add_keyword({"else"})
+            self.__add_symbol({'{'})
+            self.compile_statements()
+            self.__add_symbol({'}'})
 
     @update_parent("whileStatement")
     def compile_while(self):
@@ -254,19 +273,22 @@ class CompilationEngine:
         # grammar: 'return' expression? ';'
         # expecting 'return'
         self.__add_keyword({"return"})
-        if self.tknzr.token_type() == TokenType.SYMBOL \
-            and self.tknzr.symbol() == ';':
-            # expecting ';'
-            self.__add_symbol({';'})
-        else:
+        if self.tknzr.token_type() != TokenType.SYMBOL \
+            or self.tknzr.symbol() != ';':
             # expecting an expression
             self.compile_expression()
+        # expecting ';'
+        self.__add_symbol({';'})
 
     @update_parent("expression")
     def compile_expression(self):
         '''Compiles an expression.'''
         # grammar: term (op term)*
         self.compile_term()
+        while self.tknzr.token_type() == TokenType.SYMBOL \
+            and self.tknzr.symbol() in {'+','-','*','/','&','|','<','>','='}:
+            self.__add_symbol()
+            self.compile_term()
     
     @update_parent("term")
     def compile_term(self):
@@ -276,13 +298,67 @@ class CompilationEngine:
         A single lookahead token, which may be [, (, or . suffices to
             distinguish between the possibilities.
         Any other token is not part of this term and should not be advanced over.'''
-        pass
+        # grammar: integerConstant | stringConstant | keywordConstant | 
+        #          varName | varName '[' expression ']' | subroutineCall |
+        #          '(' expression ')' | (unaryOp term) 
+        if self.tknzr.token_type() == TokenType.INT_CONST:
+            # integer
+            elem = ET.SubElement(self.parent, "integerConstant")
+            elem.text = str( self.tknzr.int_val() )
+        elif self.tknzr.token_type() == TokenType.STRING_CONST:
+            # string
+            elem = ET.SubElement(self.parent, "stringConstant")
+            elem.text = self.tknzr.string_val()
+        elif self.tknzr.token_type() == TokenType.KEYWORD:
+            # keyword
+            self.__add_keyword({"true","false","null","this"})
+        elif self.tknzr.token_type() == TokenType.IDENTIFIER:
+            # varName | varName '[' expression ']' | subroutineCall
+            self.__add_identifier()
+            if self.tknzr.token_type() == TokenType.SYMBOL:
+                if self.tknzr.symbol() == '[':
+                    # varName '[' expression ']'
+                    self.__add_symbol({'['})
+                    self.compile_expression()
+                    self.__add_symbol({']'})
+                elif self.tknzr.symbol() in {'(', '.'}:
+                    # subroutineCall
+                    # grammar: subroutineName '(' expressionList ')' |
+                    # (className|varName) '.' subroutineName '(' expressionList ')'
+                    self.__add_identifier()
+                    if self.tknzr.symbol() == '.':
+                        self.__add_symbol({'.'})
+                        self.__add_identifier()
+                    self.__add_symbol({'('})
+                    self.compile_expression_list()
+                    self.__add_symbol({')'})
+        else:
+            # '(' expression ')' | (unaryOp term) 
+            if self.tknzr.symbol() == '(':
+                # '(' expression ')'
+                self.__add_symbol({'('})
+                self.compile_expression()
+                self.__add_symbol({')'})
+            else:
+                # (unaryOp term) 
+                self.__add_symbol({'-','~'})
+                self.compile_term()
 
     @update_parent("expressionList")
     def compile_expression_list(self) -> int:
         '''Compiles a (possibly empty) comma-separated list of expressions.
         Returns the number of expressions in the list.'''
-        pass
+        # grammar: (expression (',' expression)* )?
+        n_expr = 0
+        while self.tknzr.token_type() != TokenType.SYMBOL or \
+            self.tknzr.symbol() != ')':
+            self.compile_expression(); n_expr += 1
+            if self.tknzr.token_type() == TokenType.SYMBOL and \
+                self.tknzr.symbol() == ',':
+                self.__add_symbol({','})
+        if not n_expr:
+            self.parent.text = " "
+        return n_expr
     
     def write_to_xml(self):
         '''Writes the program structure to xml.'''
