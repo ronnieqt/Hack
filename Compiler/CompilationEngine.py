@@ -305,10 +305,12 @@ class CompilationEngine:
             # integer
             elem = ET.SubElement(self.parent, "integerConstant")
             elem.text = str( self.tknzr.int_val() )
+            self.tknzr.advance()
         elif self.tknzr.token_type() == TokenType.STRING_CONST:
             # string
             elem = ET.SubElement(self.parent, "stringConstant")
             elem.text = self.tknzr.string_val()
+            self.tknzr.advance()
         elif self.tknzr.token_type() == TokenType.KEYWORD:
             # keyword
             self.__add_keyword({"true","false","null","this"})
@@ -325,7 +327,6 @@ class CompilationEngine:
                     # subroutineCall
                     # grammar: subroutineName '(' expressionList ')' |
                     # (className|varName) '.' subroutineName '(' expressionList ')'
-                    self.__add_identifier()
                     if self.tknzr.symbol() == '.':
                         self.__add_symbol({'.'})
                         self.__add_identifier()
