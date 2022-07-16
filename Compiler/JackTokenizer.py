@@ -91,6 +91,11 @@ class JackTokenizer:
         assert self.has_more_tokens()
         self.i_curr_token += 1
         self.curr_token = self.tokens[self.i_curr_token]
+    
+    def peek_next(self):
+        '''Peeks the next token'''
+        assert self.has_more_tokens()
+        return self.tokens[self.i_curr_token+1]
 
     def token_type(self):
         '''Returns the type of the current token'''

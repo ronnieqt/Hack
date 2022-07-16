@@ -6,12 +6,25 @@ and emits its output to an output file.
 # %% import libs
 
 from pathlib import Path
+from collections import defaultdict
 
 import xml.etree.ElementTree as ET
 
+from pyparsing import identbodychars
+
 from utils import pretty_print, update_parent
-from MyTypes import TokenType
+from MyTypes import TokenType, VarKind, UsageType
 from JackTokenizer import JackTokenizer
+from SymbolTable import SymbolTable
+
+# %% VarKind Translation
+
+VAR_KIND_TRANS = defaultdict(lambda: VarKind.NONE, {
+    "static": VarKind.STATIC,
+    "field" : VarKind.FIELD,
+    "var"   : VarKind.VAR,
+    "arg"   : VarKind.ARG
+})
 
 # %% CompilationEngine definition
 
@@ -24,17 +37,21 @@ class CompilationEngine:
         self.root = None    # root for the element tree
         self.parent = None  # the current parent node
         self.f_out_path = jack_file_path.with_suffix(".xml")
+        self.tbl_class = SymbolTable()
+        self.tbl_subroutine = SymbolTable()
 
     def compile_class(self):
         '''Compiles a complete class.'''
         # grammar: 'class' className '{' classVarDec* subroutineDec* '}'
+        # reset class-level symbol table
+        self.tbl_class.reset()
         assert self.root is None
         self.parent = self.root = ET.Element("class")
         self.tknzr.advance()
         # expecting 'class'
         self.__add_keyword({"class"})
         # expecting className
-        self.__add_identifier()
+        self.__add_identifier_cls(usage=UsageType.DECLARED)
         # expecting '{'
         self.__add_symbol({'{'})
         # expecting classVarDec*
@@ -55,17 +72,25 @@ class CompilationEngine:
         '''Compiles a static variable declaration, or a field declaration.'''
         # grammar: ('static'|'field') type varName (',' varName)* ';'
         # expecting 'static' or 'field'
-        self.__add_keyword({"static", "field"})
+        kind = VAR_KIND_TRANS[self.__add_keyword({"static", "field"})]
         # expecting a type
-        self.__add_type()
-        # expecting varName
-        self.__add_identifier()
+        vtype = self.__add_type()
+        # expecting varName (no advance)
+        name = self.__get_identifier()
+        # update the class level symbol table
+        self.tbl_class.define(name, vtype, kind)
+        # added to element tree and advance
+        self.__add_identifier_var(usage=UsageType.DECLARED)
         # expecting (',' varName)*
         while self.tknzr.symbol() != ';':
             # expecting ','
             self.__add_symbol({','})
-            # expecting varName
-            self.__add_identifier()
+            # expecting varName (no advance)
+            name = self.__get_identifier()
+            # update the class level symbol table
+            self.tbl_class.define(name, vtype, kind)
+            # added to element tree and advance
+            self.__add_identifier_var(usage=UsageType.DECLARED)
         # expecting ';'
         self.__add_symbol({';'})
 
@@ -74,6 +99,8 @@ class CompilationEngine:
         '''Compiles a complete method, function, or ctor.'''
         # grammar: ('constructor'|'function'|'method') ('void'|type) subroutineName
         #          '(' parameterList ')' subroutineBody
+        # reset subroutine-level symbol table
+        self.tbl_subroutine.reset()
         # expecting keyword 'constructor' or 'function' or 'method'
         self.__add_keyword({"constructor", "function", "method"})
         # expecting 'void' or type
@@ -82,7 +109,7 @@ class CompilationEngine:
         except:  # type
             self.__add_type()
         # expecting a subrountineName
-        self.__add_identifier()
+        self.__add_identifier_sub(usage=UsageType.DECLARED)
         # expecting '('
         self.__add_symbol({'('})
         # expecting parameterList
@@ -104,9 +131,13 @@ class CompilationEngine:
         # non-empty parameter list
         while True:
             # expecting type
-            self.__add_type()
-            # expecting varName
-            self.__add_identifier()
+            vtype = self.__add_type()
+            # expecting varName (no advance)
+            name = self.__get_identifier()
+            # update the subroutine level symbol table
+            self.tbl_subroutine.define(name, vtype, VarKind.ARG)
+            # added to element tree and advance
+            self.__add_identifier_var(usage=UsageType.DECLARED)
             # expecting a symbol (either ',' or ')')
             if self.tknzr.symbol() == ',':
                 self.__add_symbol({','})
@@ -134,17 +165,25 @@ class CompilationEngine:
         '''Compiles a var declaration.'''
         # grammar: 'var' type varName (',' varName)* ';'
         # expecting 'var'
-        self.__add_keyword({"var"})
+        kind = VAR_KIND_TRANS[self.__add_keyword({"var"})]
         # expecting type
-        self.__add_type()
-        # expecting varName
-        self.__add_identifier()
+        vtype = self.__add_type()
+        # expecting varName (no advance)
+        name = self.__get_identifier()
+        # update the subroutine level symbol table
+        self.tbl_subroutine.define(name, vtype, kind)
+        # added to element tree and advance
+        self.__add_identifier_var(usage=UsageType.DECLARED)
         # expecting a symbol (either ',' or ';')
         while self.tknzr.symbol() != ';':
             # expecting ','
             self.__add_symbol({','})
-            # expecting varName
-            self.__add_identifier()
+            # expecting varName (no advance)
+            name = self.__get_identifier()
+            # update the subroutine level symbol table
+            self.tbl_subroutine.define(name, vtype, kind)
+            # added to element tree and advance
+            name = self.__add_identifier_var(usage=UsageType.DECLARED)
         # expecting ';'
         self.__add_symbol({';'})
 
@@ -181,7 +220,7 @@ class CompilationEngine:
         # expecting 'let'
         self.__add_keyword({"let"})
         # expecting varName
-        self.__add_identifier()
+        self.__add_identifier_var()
         # expecting ('['expression']')?
         if self.tknzr.symbol() == '[':
             self.__add_symbol({'['})
@@ -248,22 +287,7 @@ class CompilationEngine:
         # expecting 'do'
         self.__add_keyword({"do"})
         # expecting subroutineCall
-        # grammar: subroutineName '(' expressionList ')' |
-        #          (className|varName) '.' subroutineName '(' expressionList ')'
-        # expecting an indentifier (subroutineName|className|varName)
-        self.__add_identifier()
-        if self.tknzr.symbol() == '(':
-            # either '(' expressionList ')'
-            self.__add_symbol({'('})
-            self.compile_expression_list()
-            self.__add_symbol({')'})
-        else:
-            # or '.' subroutineName '(' expressionList ')'
-            self.__add_symbol({'.'})
-            self.__add_identifier()
-            self.__add_symbol({'('})
-            self.compile_expression_list()
-            self.__add_symbol({')'})
+        self.__compile_subroutine_call()
         # expecting ';'
         self.__add_symbol({';'})
 
@@ -316,23 +340,18 @@ class CompilationEngine:
             self.__add_keyword({"true","false","null","this"})
         elif self.tknzr.token_type() == TokenType.IDENTIFIER:
             # varName | varName '[' expression ']' | subroutineCall
-            self.__add_identifier()
-            if self.tknzr.token_type() == TokenType.SYMBOL:
-                if self.tknzr.symbol() == '[':
-                    # varName '[' expression ']'
-                    self.__add_symbol({'['})
-                    self.compile_expression()
-                    self.__add_symbol({']'})
-                elif self.tknzr.symbol() in {'(', '.'}:
-                    # subroutineCall
-                    # grammar: subroutineName '(' expressionList ')' |
-                    # (className|varName) '.' subroutineName '(' expressionList ')'
-                    if self.tknzr.symbol() == '.':
-                        self.__add_symbol({'.'})
-                        self.__add_identifier()
-                    self.__add_symbol({'('})
-                    self.compile_expression_list()
-                    self.__add_symbol({')'})
+            if self.tknzr.peek_next() == '[':
+                # varName '[' expression ']'
+                self.__add_identifier_var()
+                self.__add_symbol({'['})
+                self.compile_expression()
+                self.__add_symbol({']'})
+            elif self.tknzr.peek_next() in {'(', '.'}:
+                # subroutineCall
+                self.__compile_subroutine_call()
+            else:
+                # varName
+                self.__add_identifier_var()
         else:
             # '(' expression ')' | (unaryOp term) 
             if self.tknzr.symbol() == '(':
@@ -368,6 +387,23 @@ class CompilationEngine:
             ET.ElementTree(self.root).write(self.f_out_path)
             print(f"XML file written to [{self.f_out_path}]")
     
+    def __compile_subroutine_call(self):
+        # subroutineCall
+        # grammer: (className|varName) '.' subroutineName '(' expressionList ')' |
+        #                                  subroutineName '(' expressionList ')'
+        if self.tknzr.peek_next() == '.':
+            # expecting (className|varName) '.'
+            try:
+                self.__add_identifier_var()
+            except:
+                self.__add_identifier_cls()
+            self.__add_symbol({'.'})
+        # expecting subroutineName '(' expressionList ')'
+        self.__add_identifier_sub()
+        self.__add_symbol({'('})
+        self.compile_expression_list()
+        self.__add_symbol({')'})
+    
     def __add_keyword(self, allow=JackTokenizer.keywords, advance=True):
         keyword = self.tknzr.keyword()
         assert keyword in allow, f"keyword [{keyword}] is not in {allow}"
@@ -375,6 +411,7 @@ class CompilationEngine:
         elem.text = keyword
         if advance:
             self.tknzr.advance()
+        return keyword
     
     def __add_symbol(self, allow=JackTokenizer.symbols, advance=True):
         symbol = self.tknzr.symbol()
@@ -383,16 +420,69 @@ class CompilationEngine:
         elem.text = symbol
         if advance: 
             self.tknzr.advance()
+        return symbol
+    
+    def __get_identifier(self):
+        return self.tknzr.identifier()
 
-    def __add_identifier(self, advance=True):
+    def __add_identifier_var(self, usage=UsageType.USED, advance=True):
+        # read the variable name
+        name = self.__get_identifier()
+        # symbol table look up
+        if self.tbl_subroutine.contains(name):
+            category = self.tbl_subroutine.kind_of(name).name
+            index = self.tbl_subroutine.index_of(name)
+        elif self.tbl_class.contains(name):
+            category = self.tbl_class.kind_of(name).name
+            index = self.tbl_class.index_of(name)
+        else:
+            raise NameError(f"Undefined Variable: {name}")
+        # add identifier to the element tree
         elem = ET.SubElement(self.parent, "identifier")
-        elem.text = self.tknzr.identifier()
+        # name
+        sub_elem = ET.SubElement(elem, "name")
+        sub_elem.text = name
+        # category (field, static, var, arg)
+        sub_elem = ET.SubElement(elem, "category")
+        sub_elem.text = category
+        # index
+        sub_elem = ET.SubElement(elem, "index")
+        sub_elem.text = str(index)
+        # usage
+        sub_elem = ET.SubElement(elem, "usage")
+        sub_elem.text = usage.name
         if advance:
             self.tknzr.advance()
+        return name
+
+    def __add_identifier(self, usage, category, advance):
+        # read the identifier
+        identifier = self.__get_identifier()
+        # add identifier to the element tree
+        elem = ET.SubElement(self.parent, "identifier")
+        # name
+        sub_elem = ET.SubElement(elem, "name")
+        sub_elem.text = identifier
+        # category
+        sub_elem = ET.SubElement(elem, "category")
+        sub_elem.text = category
+        # usage
+        sub_elem = ET.SubElement(elem, "usage")
+        sub_elem.text = usage.name
+        if advance:
+            self.tknzr.advance()
+        return identifier
+
+    def __add_identifier_cls(self, usage=UsageType.USED, advance=True):
+        return self.__add_identifier(usage, "CLASS", advance)
+    
+    def __add_identifier_sub(self, usage=UsageType.USED, advance=True):
+        return self.__add_identifier(usage, "SUBROUTINE", advance)
 
     def __add_type(self, advance=True):
         # expecting 'int' or 'char' or 'boolean' or className
         try:  # 'int' | 'char' | 'boolean'
-            self.__add_keyword({"int", "char", "boolean"}, advance)
+            t = self.__add_keyword({"int", "char", "boolean"}, advance)
         except:  # className
-            self.__add_identifier(advance)
+            t = self.__add_identifier_cls(advance=advance)
+        return t
