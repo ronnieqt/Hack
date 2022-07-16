@@ -10,8 +10,6 @@ from collections import defaultdict
 
 import xml.etree.ElementTree as ET
 
-from pyparsing import identbodychars
-
 from utils import pretty_print, update_parent
 from MyTypes import TokenType, VarKind, UsageType
 from JackTokenizer import JackTokenizer
