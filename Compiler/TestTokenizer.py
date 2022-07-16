@@ -6,7 +6,7 @@ import argparse
 import xml.etree.ElementTree as ET
 
 from utils import pretty_print
-from TokenTypes import TokenType
+from MyTypes import TokenType
 from JackTokenizer import JackTokenizer
 
 # %% test implementation of the tokenizer

@@ -11,7 +11,7 @@ import re
 from typing import List
 from itertools import chain
 
-from TokenTypes import TokenType
+from MyTypes import TokenType
 
 # %% utils
 

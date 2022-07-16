@@ -10,7 +10,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from utils import pretty_print, update_parent
-from TokenTypes import TokenType
+from MyTypes import TokenType
 from JackTokenizer import JackTokenizer
 
 # %% CompilationEngine definition
