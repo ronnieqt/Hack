@@ -14,6 +14,7 @@ from utils import pretty_print, update_parent
 from MyTypes import TokenType, VarKind, UsageType
 from JackTokenizer import JackTokenizer
 from SymbolTable import SymbolTable
+from VMWriter import VMWriter
 
 # %% VarKind Translation
 
@@ -32,12 +33,12 @@ class CompilationEngine:
         '''Creates a new compilation engine.
         The next routine called must by compile_class().'''
         self.tknzr = JackTokenizer(jack_file_path)
-        self.root = None    # root for the element tree
-        self.parent = None  # the current parent node
-        self.f_out_path = jack_file_path.with_suffix(".xml")
+        self.root = None                     # root for the element tree
+        self.parent = None                   # the current parent node
         self.tbl_class = SymbolTable()       # class-level symbol table
         self.tbl_subroutine = SymbolTable()  # subroutine-level symbol table
-
+        self.vm_writer = VMWriter(jack_file_path.with_suffix(".vm"))
+    
     def compile_class(self):
         '''Compiles a complete class.'''
         # grammar: 'class' className '{' classVarDec* subroutineDec* '}'
@@ -338,13 +339,13 @@ class CompilationEngine:
             self.__add_keyword({"true","false","null","this"})
         elif self.tknzr.token_type() == TokenType.IDENTIFIER:
             # varName | varName '[' expression ']' | subroutineCall
-            if self.tknzr.token_lookahead() == '[':
+            if self.tknzr.peek_next() == '[':
                 # varName '[' expression ']'
                 self.__add_identifier_var()
                 self.__add_symbol({'['})
                 self.compile_expression()
                 self.__add_symbol({']'})
-            elif self.tknzr.token_lookahead() in {'(', '.'}:
+            elif self.tknzr.peek_next() in {'(', '.'}:
                 # subroutineCall
                 self.__compile_subroutine_call()
             else:
@@ -381,15 +382,22 @@ class CompilationEngine:
     def write_to_xml(self):
         '''Writes the program structure to xml.'''
         if self.root is not None:
+            xml_file_path = self.jack_file_path.with_suffix(".xml")
             pretty_print(self.root)
-            ET.ElementTree(self.root).write(self.f_out_path)
-            print(f"XML file written to [{self.f_out_path}]")
+            ET.ElementTree(self.root).write(xml_file_path)
+            print(f"XML file written to [{xml_file_path}]")
+
+    def close(self, write_xml=False):
+        '''Finishes compilation.'''
+        if write_xml:
+            self.write_to_xml()
+        self.vm_writer.close()
     
     def __compile_subroutine_call(self):
         # subroutineCall
         # grammer: (className|varName) '.' subroutineName '(' expressionList ')' |
         #                                  subroutineName '(' expressionList ')'
-        if self.tknzr.token_lookahead() == '.':
+        if self.tknzr.peek_next() == '.':
             # expecting (className|varName) '.'
             try:
                 self.__add_identifier_var()

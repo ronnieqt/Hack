@@ -36,7 +36,7 @@ def _main():
     for jack_file in jack_files:
         engine = CompilationEngine(jack_file)
         engine.compile_class()
-        engine.write_to_xml()
+        engine.close()
 
 # %% call the main function
 
