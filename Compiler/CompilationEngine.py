@@ -31,7 +31,8 @@ class CompilationEngine:
 
     def __init__(self, jack_file_path: Path):
         '''Creates a new compilation engine.
-        The next routine called must by compile_class().'''
+        Note: The next routine called must by compile_class().
+        '''
         self.tknzr = JackTokenizer(jack_file_path)
         self.root = None                     # root for the element tree
         self.parent = None                   # the current parent node
