@@ -92,8 +92,8 @@ class JackTokenizer:
         self.i_curr_token += 1
         self.curr_token = self.tokens[self.i_curr_token]
     
-    def peek_next(self):
-        '''Peeks the next token'''
+    def token_lookahead(self):
+        '''Checks the next token'''
         assert self.has_more_tokens()
         return self.tokens[self.i_curr_token+1]
 

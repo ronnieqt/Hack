@@ -338,13 +338,13 @@ class CompilationEngine:
             self.__add_keyword({"true","false","null","this"})
         elif self.tknzr.token_type() == TokenType.IDENTIFIER:
             # varName | varName '[' expression ']' | subroutineCall
-            if self.tknzr.peek_next() == '[':
+            if self.tknzr.token_lookahead() == '[':
                 # varName '[' expression ']'
                 self.__add_identifier_var()
                 self.__add_symbol({'['})
                 self.compile_expression()
                 self.__add_symbol({']'})
-            elif self.tknzr.peek_next() in {'(', '.'}:
+            elif self.tknzr.token_lookahead() in {'(', '.'}:
                 # subroutineCall
                 self.__compile_subroutine_call()
             else:
@@ -389,7 +389,7 @@ class CompilationEngine:
         # subroutineCall
         # grammer: (className|varName) '.' subroutineName '(' expressionList ')' |
         #                                  subroutineName '(' expressionList ')'
-        if self.tknzr.peek_next() == '.':
+        if self.tknzr.token_lookahead() == '.':
             # expecting (className|varName) '.'
             try:
                 self.__add_identifier_var()
