@@ -35,8 +35,8 @@ class CompilationEngine:
         self.root = None    # root for the element tree
         self.parent = None  # the current parent node
         self.f_out_path = jack_file_path.with_suffix(".xml")
-        self.tbl_class = SymbolTable()
-        self.tbl_subroutine = SymbolTable()
+        self.tbl_class = SymbolTable()       # class-level symbol table
+        self.tbl_subroutine = SymbolTable()  # subroutine-level symbol table
 
     def compile_class(self):
         '''Compiles a complete class.'''
@@ -423,10 +423,7 @@ class CompilationEngine:
     def __get_identifier(self):
         return self.tknzr.identifier()
 
-    def __add_identifier_var(self, usage=UsageType.USED, advance=True):
-        # read the variable name
-        name = self.__get_identifier()
-        # symbol table look up
+    def __look_up_in_symbol_table(self, name):
         if self.tbl_subroutine.contains(name):
             category = self.tbl_subroutine.kind_of(name).name
             index = self.tbl_subroutine.index_of(name)
@@ -435,27 +432,15 @@ class CompilationEngine:
             index = self.tbl_class.index_of(name)
         else:
             raise NameError(f"Undefined Variable: {name}")
-        # add identifier to the element tree
-        elem = ET.SubElement(self.parent, "identifier")
-        # name
-        sub_elem = ET.SubElement(elem, "name")
-        sub_elem.text = name
-        # category (field, static, var, arg)
-        sub_elem = ET.SubElement(elem, "category")
-        sub_elem.text = category
-        # index
-        sub_elem = ET.SubElement(elem, "index")
-        sub_elem.text = str(index)
-        # usage
-        sub_elem = ET.SubElement(elem, "usage")
-        sub_elem.text = usage.name
-        if advance:
-            self.tknzr.advance()
-        return name
+        return category, index
 
-    def __add_identifier(self, usage, category, advance):
+    def __add_identifier(self, usage, lookup, category, advance):
         # read the identifier
         identifier = self.__get_identifier()
+        # symbol table look up
+        index = -1
+        if lookup:
+            category, index = self.__look_up_in_symbol_table(identifier)
         # add identifier to the element tree
         elem = ET.SubElement(self.parent, "identifier")
         # name
@@ -464,6 +449,10 @@ class CompilationEngine:
         # category
         sub_elem = ET.SubElement(elem, "category")
         sub_elem.text = category
+        # index
+        if index >= 0:
+            sub_elem = ET.SubElement(elem, "index")
+            sub_elem.text = str(index)
         # usage
         sub_elem = ET.SubElement(elem, "usage")
         sub_elem.text = usage.name
@@ -471,11 +460,14 @@ class CompilationEngine:
             self.tknzr.advance()
         return identifier
 
+    def __add_identifier_var(self, usage=UsageType.USED, advance=True):
+        return self.__add_identifier(usage, True, "", advance)
+
     def __add_identifier_cls(self, usage=UsageType.USED, advance=True):
-        return self.__add_identifier(usage, "CLASS", advance)
+        return self.__add_identifier(usage, False, "CLASS", advance)
     
     def __add_identifier_sub(self, usage=UsageType.USED, advance=True):
-        return self.__add_identifier(usage, "SUBROUTINE", advance)
+        return self.__add_identifier(usage, False, "SUBROUTINE", advance)
 
     def __add_type(self, advance=True):
         # expecting 'int' or 'char' or 'boolean' or className
