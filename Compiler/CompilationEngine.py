@@ -11,7 +11,7 @@ from collections import defaultdict
 import xml.etree.ElementTree as ET
 
 from utils import pretty_print, update_parent
-from MyTypes import TokenType, VarKind, UsageType
+from MyTypes import TokenType, VarKind, UsageType, SegmentType
 from JackTokenizer import JackTokenizer
 from SymbolTable import SymbolTable
 from VMWriter import VMWriter
@@ -25,6 +25,13 @@ VAR_KIND_TRANS = defaultdict(lambda: VarKind.NONE, {
     "arg"   : VarKind.ARG
 })
 
+VAR_KIND_TO_SEG = {
+    VarKind.STATIC: SegmentType.STATIC,
+    VarKind.FIELD : SegmentType.THIS,
+    VarKind.ARG   : SegmentType.ARGUMENT,
+    VarKind.VAR   : SegmentType.LOCAL
+}
+
 # %% CompilationEngine definition
 
 class CompilationEngine:
@@ -32,13 +39,20 @@ class CompilationEngine:
     def __init__(self, jack_file_path: Path):
         '''Creates a new compilation engine.
         Note: The next routine called must by compile_class().
+              Assume that: 1 Jack file contains only 1 class.
         '''
-        self.tknzr = JackTokenizer(jack_file_path)
+        self.jack_file_path = jack_file_path
+        self.tknzr = JackTokenizer(self.jack_file_path)
         self.root = None                     # root for the element tree
         self.parent = None                   # the current parent node
         self.tbl_class = SymbolTable()       # class-level symbol table
         self.tbl_subroutine = SymbolTable()  # subroutine-level symbol table
-        self.vm_writer = VMWriter(jack_file_path.with_suffix(".vm"))
+        self.vm_writer = VMWriter(self.jack_file_path.with_suffix(".vm"))
+        self.cls_name = ""                   # name of this class
+        self.n_while = 0                     # counter of while statement
+        # init a function level static variables
+        CompilationEngine.compile_if.n_if = 0
+        CompilationEngine.compile_while.n_while = 0
     
     def compile_class(self):
         '''Compiles a complete class.'''
@@ -51,7 +65,7 @@ class CompilationEngine:
         # expecting 'class'
         self.__add_keyword({"class"})
         # expecting className
-        self.__add_identifier_cls(usage=UsageType.DECLARED)
+        self.cls_name = self.__add_identifier_cls(usage=UsageType.DECLARED)
         # expecting '{'
         self.__add_symbol({'{'})
         # expecting classVarDec*
@@ -101,15 +115,15 @@ class CompilationEngine:
         #          '(' parameterList ')' subroutineBody
         # reset subroutine-level symbol table
         self.tbl_subroutine.reset()
-        # expecting keyword 'constructor' or 'function' or 'method'
-        self.__add_keyword({"constructor", "function", "method"})
+        # expecting keyword 'constructor' or 'method', or 'function'
+        keyword = self.__add_keyword({"constructor", "method", "function"})
         # expecting 'void' or type
         try:  # 'void'
             self.__add_keyword({"void"})
         except:  # type
             self.__add_type()
         # expecting a subrountineName
-        self.__add_identifier_sub(usage=UsageType.DECLARED)
+        sub_name = self.__add_identifier_sub(usage=UsageType.DECLARED)
         # expecting '('
         self.__add_symbol({'('})
         # expecting parameterList
@@ -117,7 +131,7 @@ class CompilationEngine:
         # expecting ')'
         self.__add_symbol({')'})
         # expecting subrountineBody
-        self.compile_subroutine_body()
+        self.compile_subroutine_body(keyword, sub_name)
 
     @update_parent("parameterList")
     def compile_parameter_list(self):
@@ -145,7 +159,7 @@ class CompilationEngine:
                 break
 
     @update_parent("subroutineBody")
-    def compile_subroutine_body(self):
+    def compile_subroutine_body(self, keyword, sub_name):
         '''Compiles a subroutine's body.'''
         # grammar: '{' varDec* statements '}'
         # expecting '{'
@@ -155,10 +169,32 @@ class CompilationEngine:
             if self.tknzr.keyword() != "var":
                 break
             self.compile_var_dec()
+        # write the subroutine declaration
+        self.vm_writer.write_function(
+            self.cls_name + '.' + sub_name,             # function name
+            self.tbl_subroutine.var_count(VarKind.VAR)  # number of local variables
+        )
+        # if the subroutine is a ctor, then allocate memory
+        if keyword == "constructor":
+            n_fields = self.tbl_class.var_count(VarKind.FIELD)
+            self.vm_writer.write_push(SegmentType.CONSTANT, n_fields)
+            # arrange a memory block to store the new object's fields
+            self.vm_writer.write_call("Memory.alloc", 1)
+            # returns its base address to the caller
+            self.vm_writer.write_pop(SegmentType.POINTER, 0)  # pop to this
+        elif keyword == "method":
+            # in a method, pop the first arg to this
+            self.vm_writer.write_push(SegmentType.ARGUMENT, 0)
+            self.vm_writer.write_pop(SegmentType.POINTER, 0)
+        else:  # function
+            pass
         # expecting statements
         self.compile_statements()
         # expecting '}'
         self.__add_symbol({'}'})
+        # reset n_if and n_while counters
+        CompilationEngine.compile_if.n_if = 0
+        CompilationEngine.compile_if.n_while = 0
 
     @update_parent("varDec")
     def compile_var_dec(self):
@@ -220,16 +256,20 @@ class CompilationEngine:
         # expecting 'let'
         self.__add_keyword({"let"})
         # expecting varName
-        self.__add_identifier_var()
+        var_name = self.__add_identifier_var()
+        var_prop = self.__look_up_in_symbol_table(var_name)
         # expecting ('['expression']')?
         if self.tknzr.symbol() == '[':
             self.__add_symbol({'['})
             self.compile_expression()
             self.__add_symbol({']'})
+        # TODO
         # expecting '='
         self.__add_symbol({'='})
         # expecting an expression
         self.compile_expression()
+        # write pop varName
+        self.vm_writer.write_pop(VAR_KIND_TO_SEG[var_prop.kind], var_prop.index)
         # expecting ';'
         self.__add_symbol({';'})
 
@@ -238,6 +278,8 @@ class CompilationEngine:
         '''Compiles an if statement, possibly with a trailing else clause.'''
         # grammar: 'if' '(' expression ')' '{' statements '}' 
         #         ('else' '{' statements '}')?
+        n_if = CompilationEngine.compile_if.n_if
+        CompilationEngine.compile_if.n_if += 1
         # expecting 'if'
         self.__add_keyword({'if'})
         # expecting '('
@@ -246,39 +288,63 @@ class CompilationEngine:
         self.compile_expression()
         # expecting ')'
         self.__add_symbol({')'})
+        # write if-goto IF_TRUE; goto IF_FALSE
+        self.vm_writer.write_if(f"IF_TRUE{n_if}")
+        self.vm_writer.write_goto(f"IF_FALSE{n_if}")
+        self.vm_writer.write_label(f"IF_TRUE{n_if}")
         # expecting '{'
         self.__add_symbol({'{'})
         # expecting statements
         self.compile_statements()
         # expecting '}'
         self.__add_symbol({'}'})
-        # check whether we have an else clause
-        if self.tknzr.token_type() == TokenType.KEYWORD and \
-            self.tknzr.keyword() == "else":
+        # check whether we have a else block or not
+        has_else = self.tknzr.token_type() == TokenType.KEYWORD and \
+            self.tknzr.keyword() == "else"
+        # write goto IF_END
+        if has_else:
+            self.vm_writer.write_goto(f"IF_END{n_if}")
+        # write label IF_FALSE
+        self.vm_writer.write_label(f"IF_FALSE{n_if}")
+        # check whether we have an 'else' clause
+        if has_else:
             # ('else' '{' statements '}')?
             self.__add_keyword({"else"})
             self.__add_symbol({'{'})
             self.compile_statements()
             self.__add_symbol({'}'})
+            # write label IF_END
+            self.vm_writer.write_label(f"IF_END{n_if}")
 
     @update_parent("whileStatement")
     def compile_while(self):
         '''Compiles a while statement.'''
         # grammar: 'while' '(' expression ')' '{' statements '}'
+        n_while = CompilationEngine.compile_while.n_while
+        CompilationEngine.compile_while.n_while += 1
         # expecting 'while'
         self.__add_keyword({'while'})
+        # write label WHILE_EXP
+        self.vm_writer.write_label(f"WHILE_EXP{n_while}")
         # expecting '('
         self.__add_symbol({'('})
         # expecting an expression
         self.compile_expression()
         # expecting ')'
         self.__add_symbol({')'})
+        # write not; if-goto WHILE_END
+        self.vm_writer.write_arithmetic("not")
+        self.vm_writer.write_if(f"WHILE_END{n_while}")
         # expecting '{'
         self.__add_symbol({'{'})
         # expecting statements
         self.compile_statements()
+        # write goto WHILE_EXP
+        self.vm_writer.write_goto(f"WHILE_EXP{n_while}")
         # expecting '}'
         self.__add_symbol({'}'})
+        # write label WHILE_END
+        self.vm_writer.write_label(f"WHILE_END{n_while}")
 
     @update_parent("doStatement")
     def compile_do(self):
@@ -290,6 +356,8 @@ class CompilationEngine:
         self.__compile_subroutine_call()
         # expecting ';'
         self.__add_symbol({';'})
+        # pop the return value to temp 0 (ignoring the return value)
+        self.vm_writer.write_pop(SegmentType.TEMP, 0)
 
     @update_parent("returnStatement")
     def compile_return(self):
@@ -301,6 +369,11 @@ class CompilationEngine:
             or self.tknzr.symbol() != ';':
             # expecting an expression
             self.compile_expression()
+            # TODO
+        else:  # return from a void function
+            self.vm_writer.write_push(SegmentType.CONSTANT, 0)
+        # write return
+        self.vm_writer.write_return()
         # expecting ';'
         self.__add_symbol({';'})
 
@@ -311,8 +384,13 @@ class CompilationEngine:
         self.compile_term()
         while self.tknzr.token_type() == TokenType.SYMBOL \
             and self.tknzr.symbol() in {'+','-','*','/','&','|','<','>','='}:
-            self.__add_symbol()
+            op = self.__add_symbol()
             self.compile_term()
+            # output op
+            if op in VMWriter.al_op2cmd.keys():
+                self.vm_writer.write_arithmetic(VMWriter.al_op2cmd[op])
+            else:  # {'*','/'}
+                self.vm_writer.write_call(VMWriter.al_op2func[op], 2)
     
     @update_parent("term")
     def compile_term(self):
@@ -328,30 +406,45 @@ class CompilationEngine:
         if self.tknzr.token_type() == TokenType.INT_CONST:
             # integer
             elem = ET.SubElement(self.parent, "integerConstant")
-            elem.text = str( self.tknzr.int_val() )
+            val = self.tknzr.int_val()
+            elem.text = str(val)
             self.tknzr.advance()
+            # output "push c"
+            self.vm_writer.write_push(SegmentType.CONSTANT, val)
         elif self.tknzr.token_type() == TokenType.STRING_CONST:
             # string
             elem = ET.SubElement(self.parent, "stringConstant")
             elem.text = self.tknzr.string_val()
             self.tknzr.advance()
+            # TODO
         elif self.tknzr.token_type() == TokenType.KEYWORD:
             # keyword
-            self.__add_keyword({"true","false","null","this"})
+            keyword = self.__add_keyword({"true","false","null","this"})
+            if keyword == "true":
+                self.vm_writer.write_push(SegmentType.CONSTANT, 0)
+                self.vm_writer.write_arithmetic("not")
+            elif keyword == "null" or keyword == "false":
+                self.vm_writer.write_push(SegmentType.CONSTANT, 0)
+            else:  # this
+                self.vm_writer.write_push(SegmentType.POINTER, 0)
         elif self.tknzr.token_type() == TokenType.IDENTIFIER:
             # varName | varName '[' expression ']' | subroutineCall
-            if self.tknzr.peek_next() == '[':
+            if self.tknzr.token_lookahead() == '[':
                 # varName '[' expression ']'
                 self.__add_identifier_var()
                 self.__add_symbol({'['})
                 self.compile_expression()
                 self.__add_symbol({']'})
-            elif self.tknzr.peek_next() in {'(', '.'}:
+                # TODO
+            elif self.tknzr.token_lookahead() in {'(', '.'}:
                 # subroutineCall
                 self.__compile_subroutine_call()
+                # TODO
             else:
                 # varName
-                self.__add_identifier_var()
+                var_name = self.__add_identifier_var()
+                var_prop = self.__look_up_in_symbol_table(var_name)
+                self.vm_writer.write_push(VAR_KIND_TO_SEG[var_prop.kind], var_prop.index)
         else:
             # '(' expression ')' | (unaryOp term) 
             if self.tknzr.symbol() == '(':
@@ -361,8 +454,10 @@ class CompilationEngine:
                 self.__add_symbol({')'})
             else:
                 # (unaryOp term) 
-                self.__add_symbol({'-','~'})
+                uop = self.__add_symbol({'-','~'})
                 self.compile_term()
+                # output op
+                self.vm_writer.write_arithmetic(VMWriter.al_uop2cmd[uop])
 
     @update_parent("expressionList")
     def compile_expression_list(self) -> int:
@@ -398,18 +493,33 @@ class CompilationEngine:
         # subroutineCall
         # grammer: (className|varName) '.' subroutineName '(' expressionList ')' |
         #                                  subroutineName '(' expressionList ')'
-        if self.tknzr.peek_next() == '.':
+        if self.tknzr.token_lookahead() == '.':
             # expecting (className|varName) '.'
             try:
-                self.__add_identifier_var()
+                # varName.xxx (a method)
+                var_name = self.__add_identifier_var()
+                var_prop = self.__look_up_in_symbol_table(var_name)
+                self.vm_writer.write_push(VAR_KIND_TO_SEG[var_prop.kind], var_prop.index)  # push varName
+                has_this = True
+                cls_name = self.__look_up_in_symbol_table(var_name).vtype
             except:
-                self.__add_identifier_cls()
+                # className.xxx (a function)
+                has_this = False
+                cls_name = self.__add_identifier_cls()
             self.__add_symbol({'.'})
+            cls_name += '.'
+        else:  # subroutineName(...) (a method)
+            cls_name = self.cls_name + '.'  # name of this class
+            self.vm_writer.write_push(SegmentType.POINTER, 0)  # push this
+            has_this = True
         # expecting subroutineName '(' expressionList ')'
-        self.__add_identifier_sub()
+        sub_name = self.__add_identifier_sub()
+        func_name = cls_name + sub_name
         self.__add_symbol({'('})
-        self.compile_expression_list()
+        n_args = self.compile_expression_list()
         self.__add_symbol({')'})
+        # write "call f n"
+        self.vm_writer.write_call(func_name, n_args + (1 if has_this else 0))
     
     def __add_keyword(self, allow=JackTokenizer.keywords, advance=True):
         keyword = self.tknzr.keyword()
@@ -434,14 +544,11 @@ class CompilationEngine:
 
     def __look_up_in_symbol_table(self, name):
         if self.tbl_subroutine.contains(name):
-            category = self.tbl_subroutine.kind_of(name).name
-            index = self.tbl_subroutine.index_of(name)
+            return self.tbl_subroutine.get(name)
         elif self.tbl_class.contains(name):
-            category = self.tbl_class.kind_of(name).name
-            index = self.tbl_class.index_of(name)
+            return self.tbl_class.get(name)
         else:
             raise NameError(f"Undefined Variable: {name}")
-        return category, index
 
     def __add_identifier(self, usage, lookup, category, advance):
         # read the identifier
@@ -449,7 +556,8 @@ class CompilationEngine:
         # symbol table look up
         index = -1
         if lookup:
-            category, index = self.__look_up_in_symbol_table(identifier)
+            var_prop = self.__look_up_in_symbol_table(identifier)
+            category, index = var_prop.kind.name, var_prop.index
         # add identifier to the element tree
         elem = ET.SubElement(self.parent, "identifier")
         # name
