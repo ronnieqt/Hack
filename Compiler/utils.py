@@ -32,14 +32,15 @@ def pretty_print(current, parent=None, index=-1, depth=0, indent=" "*2):
 
 def update_parent(parent_name):
     def _update_parent(func):
-        def _inner(self):
+        def _inner(self, *args, **kwargs):
             # backup self.parent
             parent = self.parent
             # update self.parent
             self.parent = ET.SubElement(self.parent, parent_name)
             # call func
-            func(self)
+            res = func(self, *args, **kwargs)
             # reset self.parent
             self.parent = parent
+            return res
         return _inner
     return _update_parent
