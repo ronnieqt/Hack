@@ -68,3 +68,20 @@ class SymbolTable:
     def contains(self, name: str) -> bool:
         """Checks whether the symbol contains the given name or not."""
         return name in self.data
+    
+    def get(self, name: str) -> VarProp:
+        """Gets variable properties correspond to the given name."""
+        return self.data[name]
+    
+    def __str__(self) -> str:
+        """Print the symbol table."""
+        rows = [f"{'name':>15}{'type':>10}{'kind':>10}{'index':>10}", "-"*46]
+        for name, prop in self.data.items():
+            rows.append(
+                f"{name:>15}"
+                f"{prop.vtype:>10}"
+                f"{prop.kind.name:>10}"
+                f"{prop.index:>10}"
+            )
+        rows.append("="*46)
+        return "\n".join(rows) 
