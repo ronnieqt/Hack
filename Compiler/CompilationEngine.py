@@ -258,18 +258,35 @@ class CompilationEngine:
         # expecting varName
         var_name = self.__add_identifier_var()
         var_prop = self.__look_up_in_symbol_table(var_name)
-        # expecting ('['expression']')?
-        if self.tknzr.symbol() == '[':
+        # check whether this is a variable or an array assignment
+        is_array_assignment = self.tknzr.symbol() == '['
+        # array assignment
+        if is_array_assignment:
+            # expecting ('['expression']')?
             self.__add_symbol({'['})
             self.compile_expression()
             self.__add_symbol({']'})
-        # TODO
-        # expecting '='
-        self.__add_symbol({'='})
-        # expecting an expression
-        self.compile_expression()
-        # write pop varName
-        self.vm_writer.write_pop(VAR_KIND_TO_SEG[var_prop.kind], var_prop.index)
+            # put the value of varName at the stack's top
+            self.vm_writer.write_push(VAR_KIND_TO_SEG[var_prop.kind], var_prop.index)
+            # calc (varName + expression)
+            self.vm_writer.write_arithmetic("add")
+            # expecting '='
+            self.__add_symbol({'='})
+            # expecting an expression
+            self.compile_expression()
+            # save the value of the rhs expression
+            self.vm_writer.write_pop(SegmentType.TEMP, 0)
+            # assign value of the rhs expression to array
+            self.vm_writer.write_pop(SegmentType.POINTER, 1)  # that = varName + expression
+            self.vm_writer.write_push(SegmentType.TEMP, 0)    # put value of rhs at the stack's top
+            self.vm_writer.write_pop(SegmentType.THAT, 0)     # *(varName+expression) = rhs's value
+        else:  # variable assignment
+            # expecting '='
+            self.__add_symbol({'='})
+            # expecting an expression
+            self.compile_expression()
+            # assign value of the rhs expression to the variable varName
+            self.vm_writer.write_pop(VAR_KIND_TO_SEG[var_prop.kind], var_prop.index)
         # expecting ';'
         self.__add_symbol({';'})
 
@@ -369,7 +386,6 @@ class CompilationEngine:
             or self.tknzr.symbol() != ';':
             # expecting an expression
             self.compile_expression()
-            # TODO
         else:  # return from a void function
             self.vm_writer.write_push(SegmentType.CONSTANT, 0)
         # write return
@@ -413,10 +429,16 @@ class CompilationEngine:
             self.vm_writer.write_push(SegmentType.CONSTANT, val)
         elif self.tknzr.token_type() == TokenType.STRING_CONST:
             # string
+            txt = self.tknzr.string_val()
             elem = ET.SubElement(self.parent, "stringConstant")
-            elem.text = self.tknzr.string_val()
+            elem.text = txt
             self.tknzr.advance()
-            # TODO
+            # construct a String object
+            self.vm_writer.write_push(SegmentType.CONSTANT, len(txt))
+            self.vm_writer.write_call("String.new", 1)
+            for c in txt:
+                self.vm_writer.write_push(SegmentType.CONSTANT, ord(c))
+                self.vm_writer.write_call("String.appendChar", 2)
         elif self.tknzr.token_type() == TokenType.KEYWORD:
             # keyword
             keyword = self.__add_keyword({"true","false","null","this"})
@@ -431,15 +453,22 @@ class CompilationEngine:
             # varName | varName '[' expression ']' | subroutineCall
             if self.tknzr.token_lookahead() == '[':
                 # varName '[' expression ']'
-                self.__add_identifier_var()
+                var_name = self.__add_identifier_var()
+                var_prop = self.__look_up_in_symbol_table(var_name)
                 self.__add_symbol({'['})
                 self.compile_expression()
                 self.__add_symbol({']'})
-                # TODO
+                # put the value of varName at the stack's top
+                self.vm_writer.write_push(VAR_KIND_TO_SEG[var_prop.kind], var_prop.index)
+                # calc (varName + expression)
+                self.vm_writer.write_arithmetic("add")
+                # that = varName + expression
+                self.vm_writer.write_pop(SegmentType.POINTER, 1)  # that = varName + expression
+                # put *(that+0) at the stack's top
+                self.vm_writer.write_push(SegmentType.THAT, 0)
             elif self.tknzr.token_lookahead() in {'(', '.'}:
                 # subroutineCall
                 self.__compile_subroutine_call()
-                # TODO
             else:
                 # varName
                 var_name = self.__add_identifier_var()
