@@ -13,26 +13,36 @@ from itertools import chain
 
 from MyTypes import TokenType
 
+# %% regex patterns
+
+PATT_STR = r"\"[^\"\n]+\""
+PATT_STR_CONST = '^' + PATT_STR + '$'
+PATT_IDENTIFIER = r"^[a-zA-Z_]\w*$"
+
 # %% utils
 
 def is_string_constant(block: str):
-    return re.match(r"^\"[^\"\n]+\"$", block)
+    return re.match(PATT_STR_CONST, block)
 
 
 def is_identifier(block: str):
-    return re.match(r"^[a-zA-Z_]\w*$", block)
+    return re.match(PATT_IDENTIFIER, block)
 
 # %% jack file processing
 
-def process_line(line: str) -> str:
+def process_line(line: str) -> List[str]:
     line = re.sub("//.*$", "", line)
     line = line.strip()
     return re.findall(r'\S*".*"\S*|\S+', line)
 
 
 def split_into_tokens(block: str) -> List[str]:
+    # step 1: extract strings
+    parts = re.split('('+PATT_STR+')', block)
+    # step 2: split each part that is not a string into tokens
     patt = '([' + re.escape("".join(JackTokenizer.symbols)) + '])'
-    return re.split(patt, block)
+    tokens = [[part] if '"' in part else re.split(patt, part) for part in parts]
+    return [*chain(*tokens)]
 
 
 def process_code_block(block: str) -> List[str]:
