@@ -22,6 +22,7 @@ from CompilationEngine import CompilationEngine
 
 parser = argparse.ArgumentParser()
 parser.add_argument("src", help="Jack source file(s)")
+parser.add_argument("--xml", help="Set to generate xml", action="store_true")
 options = parser.parse_args()
 
 # %% main function
@@ -36,7 +37,7 @@ def _main():
     for jack_file in jack_files:
         engine = CompilationEngine(jack_file)
         engine.compile_class()
-        engine.close()
+        engine.close(write_xml=options.xml)
 
 # %% call the main function
 
