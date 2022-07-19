@@ -113,10 +113,10 @@ class CompilationEngine:
         '''Compiles a complete method, function, or ctor.'''
         # grammar: ('constructor'|'function'|'method') ('void'|type) subroutineName
         #          '(' parameterList ')' subroutineBody
-        # reset subroutine-level symbol table
-        self.tbl_subroutine.reset()
         # expecting keyword 'constructor' or 'method', or 'function'
         keyword = self.__add_keyword({"constructor", "method", "function"})
+        # reset subroutine-level symbol table
+        self.tbl_subroutine.reset(keyword=="method")
         # expecting 'void' or type
         try:  # 'void'
             self.__add_keyword({"void"})

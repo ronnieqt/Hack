@@ -32,12 +32,14 @@ class SymbolTable:
         """Creates a new symbol table."""
         self.reset()
 
-    def reset(self) -> None:
+    def reset(self, in_method: bool=False) -> None:
         """Empties the symbol table, and resets the 4 indexes to 0.
         Note: should be called when starting to compile a subroutine declaration.
         """
         self.data = dict()                     # {name: var_prop}
         self.counter = defaultdict(lambda: 0)  # {var_kind: n_in_the_table}
+        if in_method:  # the first argument in a method is 'this'
+            self.counter[VarKind.ARG] = 1
 
     def define(self, name: str, vtype: str, kind: VarKind) -> None:
         """Defines a new variable of the given name, type, and kind."""
