@@ -6,6 +6,11 @@
 **/test/
 **/tests/
 
+# Compiled Jack files
+.vm
+.asm
+.hack
+
 # coursera file(s)
 lang.txt
 *.zip
