@@ -15,9 +15,20 @@ class Array {
 
     /** Constructs a new Array of the given size. */
     function Array new(int size) {
+        // NOTE: implemented as a function, not as a ctor
+        if (~(size > 0)) { do Sys.error(2); }
+        return Memory.alloc(size);  // return this;
     }
 
     /** Disposes this array. */
     method void dispose() {
+        // a = Array.new(3);
+        // in this case, 'a' contains the base address of the allocated array
+        // when calling a.dispose(), 
+        //     a's value is copied as the 1st arg,
+        //     and the 1st arg is popped to 'this'
+        do Memory.deAlloc(this);
+        return;
     }
+
 }

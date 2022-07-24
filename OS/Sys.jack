@@ -24,4 +24,5 @@ class Sys {
      *  and halts the program's execution. */
     function void error(int errorCode) {
     }
+
 }
