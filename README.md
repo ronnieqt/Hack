@@ -1,6 +1,6 @@
 # Hack
 A Software Suite for the Hack Computer (Implemented in C++ and Python)
 
-$$
-\text{.jack}\ \xrightarrow{\text{Compiler}}\ \text{.vm}\ \xrightarrow{\text{VMTranslator}}\ \text{.asm}\ \xrightarrow{\text{Assembler}}\ \text{.hack}
-$$
+- Compiler: high-level prgram (`.jack`) -> VM code (`.vm`)
+- VMTranslator: VM code (`.vm`) -> low-level prgram (`.asm`)
+- Assembler: low-level program (`.asm`) -> machine code (`.hack`)
