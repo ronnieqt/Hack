@@ -12,53 +12,168 @@
  */
 class String {
 
+    field Array m_str;
+    field int m_str_length, m_max_length;
+
     /** constructs a new empty string with a maximum length of maxLength
      *  and initial length of 0. */
     constructor String new(int maxLength) {
+        // maximum length must be non-negative
+        if (maxLength < 0) { do Sys.error(14); }
+        if (maxLength = 0) { let maxLength = 1; }
+        let m_str = Array.new(maxLength);
+        let m_str_length = 0;
+        let m_max_length = maxLength;
+        return this;
     }
 
     /** Disposes this string. */
     method void dispose() {
+        do m_str.dispose();
+        return;
     }
 
     /** Returns the current length of this string. */
     method int length() {
+        return m_str_length;
     }
 
     /** Returns the character at the j-th location of this string. */
     method char charAt(int j) {
+        // string index out of bounds
+        if (~(j < m_str_length)) { do Sys.error(15); }
+        return m_str[j];
     }
 
     /** Sets the character at the j-th location of this string to c. */
     method void setCharAt(int j, char c) {
+        // string index out of bounds
+        if (~(j < m_str_length)) { do Sys.error(16); }
+        let m_str[j] = c;
+        return;
+    }
+
+    /** Resizes the string */
+    method void resize(int new_length) {
+        var int i, n;
+        var Array new_str;
+        let i = 0;
+        let n = Math.min(new_length, m_max_length);
+        let new_str = Array.new(new_length);
+        // copy characters over
+        while (i < n) {
+            let new_str[i] = m_str[i];
+            let i = i + 1;
+        }
+        // dispose the old array
+        do m_str.dispose();
+        // reset string attributes
+        let m_str = new_str;
+        let m_str_length = n;
+        let m_max_length = new_length;
+        return;
     }
 
     /** Appends c to this string's end and returns this string. */
     method String appendChar(char c) {
+        // string is full
+        if (m_str_length = m_max_length) { 
+            do resize(m_max_length + 5);
+        }
+        let m_str[m_str_length] = c;
+        let m_str_length = m_str_length + 1;
+        return this;
     }
 
     /** Erases the last character from this string. */
     method void eraseLastChar() {
+        // string is empty
+        if (m_str_length = 0) { do Sys.error(18); }
+        let m_str_length = m_str_length - 1;
+        return;
     }
 
     /** Returns the integer value of this string, 
      *  until a non-digit character is detected. */
     method int intValue() {
+        var int i, val, sign;
+        // check if string is empty
+        if (m_str_length = 0) { return 0; }
+        // init for local variables
+        let i = 0;
+        let val = 0;
+        let sign = 1;
+        // check the first char
+        if (m_str[0] = 43) { let i = 1; let sign = 1; }   // '+'
+        if (m_str[0] = 45) { let i = 1; let sign = -1; }  // '-'
+        // string to int
+        while (i < m_str_length) {
+            if (~String.isDigit(m_str[i])) {
+                do Sys.error(21);  // not a digit
+            }
+            let val = val * 10 + (m_str[i] - 48);
+            let i = i + 1;
+        }
+        // return val
+        if (sign > 0) {
+            return val;
+        }
+        else {
+            return -val;
+        }
     }
 
     /** Sets this string to hold a representation of the given value. */
+    method void __int_to_string(int val) {
+        // assume that: val >= 0
+        var int q, r;
+        var char c;
+        // last_digit = val % 10
+        let q = val / 10;
+        let r = val - (10 * q);
+        // c = character representing last_digit
+        let c = (r + 48);
+        if (val < 10) {
+            // if (val < 0): return c (as a string)
+            do appendChar(c);
+        }
+        else {
+            // else: return int2String(val/10).append(c)
+            do __int_to_string(q);
+            do appendChar(c);
+        }
+        return;
+    }
     method void setInt(int val) {
+        // resets the current string
+        let m_str_length = 0;
+        // process the sign char
+        if (val < 0) {
+            do appendChar(45);  // '-'
+        }
+        // convert int to string
+        do __int_to_string(Math.abs(val));
+        return;
     }
 
     /** Returns the new line character. */
     function char newLine() {
+        return 128;
     }
 
     /** Returns the backspace character. */
     function char backSpace() {
+        return 129;
     }
 
     /** Returns the double quote (") character. */
     function char doubleQuote() {
+        return 34;
     }
+
+    /** Checks if the given char is a digit or not */
+    function boolean isDigit(char c) {
+        return ((c > 47) & (c < 58));
+    }
+
 }
