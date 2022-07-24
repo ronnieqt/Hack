@@ -10,25 +10,88 @@
  */ 
 class Memory {
 
+    static Array m_ram;
+    static Array m_heap;
+    // free_list: the base address of all the free memory for new objects
+    static int m_free_list;
+
     /** Initializes the class. */
     function void init() {
+        let m_ram = 0;
+        let m_heap = 2048;      // heapBase
+        let m_free_list = m_heap;
+        let m_heap[0] = null;   // next
+        let m_heap[1] = 14335;  // length
+        return;
     }
 
     /** Returns the RAM value at the given address. */
     function int peek(int address) {
+        return m_ram[address];
     }
 
     /** Sets the RAM value at the given address to the given value. */
     function void poke(int address, int value) {
+        let m_ram[address] = value;
+        return;
     }
 
     /** Finds an available RAM block of the given size and returns
      *  a reference to its base address. */
+    function Array findBestFit(int size) {
+        var Array mem_seg, best_fit;
+        var boolean break;
+        let mem_seg = m_free_list;
+        let best_fit = null;
+        let break = false;
+        while ( (~(mem_seg = null)) & (~break) ) {
+            if (mem_seg[1] > (size + 1)) {
+                if ( (best_fit = null) | (mem_seg[1] = (size + 2)) ) { 
+                    let best_fit = mem_seg;
+                }
+                else {
+                    if (mem_seg[1] > best_fit[1]) { 
+                        let best_fit = mem_seg; 
+                    }
+                }
+                if (best_fit[1] = (size + 2)) { let break = true; }
+            }
+            // move to the next memory segment
+            let mem_seg = mem_seg[0];
+        }
+        return best_fit;
+    }
     function int alloc(int size) {
+        var Array best_fit;
+        var int block;
+        // allocated memory size must be positive
+        if (~(size > 0)) { do Sys.error(5); }
+        // search m_free_list using best-fit or first-fit heuristics
+        //     to obtain a segment with segment size >= size + 2
+        let best_fit = Memory.findBestFit(size);
+        // if no such segment is found, return failure
+        //     (TODO: or attempt defragmentation)
+        if (best_fit = null) { do Sys.error(6); }
+        // block = base address of the found space
+        let block = best_fit + best_fit[1] - size;
+        // update the m_free_list and the fields of block
+        //     to account for the allocation
+        let best_fit[1] = best_fit[1] - size - 2;
+        let m_ram[block-2] = null;
+        let m_ram[block-1] = size;
+        // return block
+        return block;
     }
 
     /** De-allocates the given object (cast as an array) by making
      *  it available for future allocations. */
     function void deAlloc(Array o) {
-    }    
+        // append object to the end of the m_free_list
+        var Array mem_seg;
+        let mem_seg = m_free_list;
+        while (~(mem_seg[0] = null)) { let mem_seg = mem_seg[0]; }
+        let mem_seg[0] = o - 2;
+        return;
+    } 
+
 }
