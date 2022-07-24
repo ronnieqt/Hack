@@ -76,7 +76,7 @@ class String {
 
     /** Appends c to this string's end and returns this string. */
     method String appendChar(char c) {
-        // string is full
+        // resize if the string is full
         if (m_str_length = m_max_length) { 
             do resize(m_max_length + 5);
         }
