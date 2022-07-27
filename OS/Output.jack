@@ -19,8 +19,15 @@ class Output {
     // Character map for displaying characters
     static Array charMaps; 
 
+    // Coordinates of the cursor (ith-row, jth-col)
+    static int m_i, m_j;
+
     /** Initializes the screen, and locates the cursor at the screen's top-left. */
     function void init() {
+        // create the fonts
+        do Output.initMap();
+        do Output.moveCursor(0, 0);
+        return;
     }
 
     // Initializes the character map array
@@ -173,36 +180,113 @@ class Output {
         return charMaps[c];
     }
 
+    /** Prints the given char at the current cursor. */
+    function void __printChar(char c) {
+        var int address, value, k, q, r, m;
+        var Array map;
+        let map = Output.getMap(c);
+        // address = 16384 + (32*11*y) + (8*x/16)
+        let q = m_j / 2;
+        let r = m_j - (2 * q);
+        let address = 16384 + (352*m_i) + q;
+        let k = 0;
+        while (k < 11) {
+            let value = Memory.peek(address);
+            let m = map[k];
+            if (r = 0) {
+                //        LSB   --->   MSB
+                // value: xxxxxxxxxxxxxxxx 
+                //  -256: 0000000011111111
+                //     m: xxxxxxxx00000000
+                let value = (value & -256) | m;
+            }
+            else {
+                //        LSB   --->   MSB
+                // value: xxxxxxxxxxxxxxxx 
+                //   255: 1111111100000000
+                // 256*m: 00000000xxxxxxxx
+                //   256: 0000000010000000
+                //     m: xxxxxxxx00000000
+                let value = (value & 255) | (256 * m);
+            }
+            do Memory.poke(address, value);
+            let address = address + 32;
+            let k = k + 1;
+        }
+        return;
+    }
+
     /** Moves the cursor to the j-th column of the i-th row,
      *  and erases the character displayed there. */
     function void moveCursor(int i, int j) {
         if ((i < 0) | (i > 22) | (j < 0) | (j > 63)) {
             do Sys.error(20);
         }
-        // TODO
+        let m_i = i;
+        let m_j = j;
+        do Output.__printChar(32);
         return;
     }
 
     /** Displays the given character at the cursor location,
      *  and advances the cursor one column forward. */
     function void printChar(char c) {
+        do Output.__printChar(c);
+        if (m_j = 63) {
+            if (m_i = 22) {
+                do Output.moveCursor(0, 0);
+            }
+            else {
+                do Output.moveCursor(m_i+1, 0);
+            }
+        }
+        else {
+            do Output.moveCursor(m_i, m_j+1);
+        }
+        return;
     }
 
     /** displays the given string starting at the cursor location,
      *  and advances the cursor appropriately. */
     function void printString(String s) {
+        var int i, n;
+        let i = 0;
+        let n = s.length();
+        while (i < n) {
+            do Output.printChar(s.charAt(i));
+            let i = i + 1;
+        }
+        return;
     }
 
     /** Displays the given integer starting at the cursor location,
      *  and advances the cursor appropriately. */
     function void printInt(int i) {
+        var String s;
+        let s = String.new(6);
+        do s.setInt(i);
+        do Output.printString(s);
+        do s.dispose();
+        return;
     }
 
     /** Advances the cursor to the beginning of the next line. */
     function void println() {
+        if (m_i = 22) {
+            do Output.moveCursor(0, 0);
+        }
+        else {
+            do Output.moveCursor(m_i+1, 0);
+        }
+        return;
     }
 
     /** Moves the cursor one column back. */
     function void backSpace() {
+        if (m_j > 0) {
+            do Output.__printChar(32);
+            do Output.moveCursor(m_i, m_j-1);
+        }
+        return;
     }
 }
